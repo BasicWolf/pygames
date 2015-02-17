@@ -7,10 +7,12 @@ even_count = 0
 lost_count = 0
 total_games = 0
 
+
 def main():
     while 1:
         game_loop()
 
+        
 def game_loop():
     global win_count, lost_count, even_count, total_games
 
