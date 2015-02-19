@@ -1,6 +1,12 @@
-# simple dice game, me vs. friend random dice rolls
+# This is a simple dice game.
+# The rules are following:
+# 1. A human player (you) rolls a virtual dice.
+# 2. An AI opponent rolls a virtual dice.
+# 3. The winner is the player (either human or AI) with the biggest rolled score.
+# 4. If the scores are equal the round is counted as 'even'.
 
 from random import randint
+
 
 win_count = 0
 even_count = 0
@@ -38,7 +44,8 @@ def game_loop():
 
     total_games += 1
     
-    print('Total games played: {}. Wins: {}, Even: {}, Losses: {}'.format(total_games, win_count, even_count, lost_count))
+    print('Total games played: {}. Wins: {}, Even: {}, Losses: {}'.format(
+        total_games, win_count, even_count, lost_count))
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
-# simple dice game, me vs. friend random dice rolls
-# same as 201, but with game state in dictionary
+# The same game as in 201.py
+# The state of the game is now stored in a dictionary
 
 from random import randint
 
