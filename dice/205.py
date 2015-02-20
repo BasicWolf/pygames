@@ -13,7 +13,7 @@ class Game:
     renderer = None
     
     def __init__(self, renderer):
-        self.renderer = renderer
+        self.renderer = renderer(self)
 
     def run(self):        
         while 1:
@@ -21,6 +21,9 @@ class Game:
         
     def loop(self):
         self.renderer.new_game()
+        self.round()
+        self.renderer.roll_results()
+        self.renderer.roll_results()
         
     def round(self):        
         ai_value = randint(1, 6)
@@ -54,17 +57,16 @@ class ConsoleRenderer:
         print('You rolled %d' % pl_value)
     
     
-    def render_game_state(self):
+    def game_state(self):
         g = self.game
-        print('Game is %s.' % result)
+        print('Game is %s.' % g.result)
 
         print('Total games played: {}. Wins: {}, Even: {}, Losses: {}'.format(
             g.total_games, g.win_count, g.even_count, g.lost_count))
         
     
-def main():
-    renderer = ConsoleRenderer()
-    game = Game(renderer)
+def main():    
+    game = Game(ConsoleRenderer)
     game.run()
     
 

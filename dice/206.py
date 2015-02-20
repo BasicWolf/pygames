@@ -50,19 +50,19 @@ class BeautifulConsoleRenderer:
         input('Roll the dice (press [Enter])')    
 
     def roll_results(ai_value, pl_value):
-        print('AI rolled %d' % ai_value)
-        print('You rolled %d' % pl_value)
+        print('AI rolled %d' % self.value_to_symbol(ai_value))
+        print('You rolled %d' % self.value_to_symbol(pl_value))
         
     def render_game_state(self):
         g = self.game
-        print('Game is %s.' % result)
+        print('Game is %s.' % g.result)
 
         print('Total games played: {}. Wins: {}, Even: {}, Losses: {}'.format(
             g.total_games, g.win_count, g.even_count, g.lost_count))
 
     def value_to_symbol(self, value):
-        pass
-        # ⚀ ⚁ ⚂ ⚃ ⚄ ⚅        
+        chars = '⚀⚁⚂⚃⚄⚅'
+        return chars[value - 1]
         
 
 class ConsoleRenderer:

@@ -9,7 +9,7 @@ class GameState:
     even_count = 0
     lost_count = 0
     total_games = 0
-    game_result = ''
+    result = ''
 
     
 def main():
@@ -33,13 +33,13 @@ def game_loop(g):
 
     if (pl_value > ai_value):
         g.win_count += 1
-        g.game_result = 'won'
+        g.result = 'won'
     elif (pl_value == ai_value):
         g.even_count += 1
-        g.game_result = 'even'
+        g.result = 'even'
     elif (pl_value < ai_value):
         g.lost_count += 1
-        g.game_result = 'lost'
+        g.result = 'lost'
 
     g.total_games += 1
 
@@ -50,7 +50,7 @@ def render_roll_results(ai_value, pl_value):
     
     
 def render_game_state(g):
-    print('Game is %s.' % g.game_result)
+    print('Game is %s.' % g.result)
 
     print('Total games played: {}. Wins: {}, Even: {}, Losses: {}'.format(
         g.total_games, g.win_count, g.even_count, g.lost_count))
