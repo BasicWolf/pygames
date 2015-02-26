@@ -1,20 +1,21 @@
-# simple dice game, me vs. friend random dice rolls
-# same as 202, but with game state in class
+# The same game as in 201 and 202.
+# The state of the game is now stored in a class. 
 
 from random import randint
+
+
+def main():
+    game_state = GameState()
+    
+    while 1:
+        game_loop(game_state)
+
 
 class GameState:
     win_count = 0
     even_count = 0
     lost_count = 0
     total_games = 0
-
-    
-def main():
-    game_state = GameState()
-    
-    while 1:
-        game_loop(game_state)
 
         
 def game_loop(g):

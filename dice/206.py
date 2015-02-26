@@ -1,8 +1,13 @@
-# simple dice game, me vs. friend random dice rolls
-# same as 203, but with renderers in separate function
+# The same game as in 201-205.
+# New 'Beautiful' renderer, which renders the game a bit differently
 
 from random import randint
 
+        
+def main():    
+    game = Game(BeautifulConsoleRenderer)
+    game.run()
+    
 
 class Game:
     win_count = 0
@@ -10,22 +15,31 @@ class Game:
     lost_count = 0
     total_games = 0
     result = ''
+
+    round_ai_value = None
+    round_pl_value = None
+    
     renderer = None
     
     def __init__(self, renderer):
-        self.renderer = renderer
+        self.renderer = renderer(self)
 
     def run(self):        
         while 1:
             self.loop()
         
     def loop(self):
-        self.renderer.new_game()
+        self.renderer.render_new_game()
+        self.round()
+        self.renderer.render_game_state()
         
     def round(self):        
         ai_value = randint(1, 6)
         pl_value = randint(1, 6)
 
+        self.round_ai_value = ai_value
+        self.round_pl_value = pl_value
+        
         if (pl_value > ai_value):
             self.win_count += 1
             self.result = 'won'
@@ -41,20 +55,23 @@ class Game:
 
 class BeautifulConsoleRenderer:
     game = None
+    
     def __init__(self, game):
         self.game = game
         
-    def new_game(self):
+    def render_new_game(self):
         print()
         print('------- New game -------')
         input('Roll the dice (press [Enter])')    
-
-    def roll_results(ai_value, pl_value):
-        print('AI rolled %d' % self.value_to_symbol(ai_value))
-        print('You rolled %d' % self.value_to_symbol(pl_value))
         
     def render_game_state(self):
         g = self.game
+
+        ai_value_symbol = self.value_to_symbol(g.round_ai_value)
+        pl_value_symbol = self.value_to_symbol(g.round_pl_value)
+        print('AI rolled {} ({})'.format(ai_value_symbol, g.round_ai_value))
+        print('You rolled {} ({})'.format(pl_value_symbol, g.round_pl_value))
+
         print('Game is %s.' % g.result)
 
         print('Total games played: {}. Wins: {}, Even: {}, Losses: {}'.format(
@@ -67,33 +84,26 @@ class BeautifulConsoleRenderer:
 
 class ConsoleRenderer:
     game = None
+    
     def __init__(self, game):
         self.game = game
         
-    def new_game(self):
+    def render_new_game(self):
         print()
         print('------- New game -------')
         input('Roll the dice (press [Enter])')    
 
-    def roll_results(ai_value, pl_value):
-        print('AI rolled %d' % ai_value)
-        print('You rolled %d' % pl_value)
-    
-    
     def render_game_state(self):
         g = self.game
-        print('Game is %s.' % result)
+
+        print('AI rolled %d' % g.round_ai_value)
+        print('You rolled %d' % g.round_pl_value)
+
+        print('Game is %s.' % g.result)
 
         print('Total games played: {}. Wins: {}, Even: {}, Losses: {}'.format(
             g.total_games, g.win_count, g.even_count, g.lost_count))
+
         
-    
-def main():
-    renderer = ConsoleRenderer()
-    game = Game(renderer)
-    game.run()
-    
-
-
 if __name__ == '__main__':
     main()
