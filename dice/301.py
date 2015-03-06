@@ -44,13 +44,37 @@ class Game:
         self.renderer = ConsoleRenderer(self)
         self.state = MainMenuState(self)
         self.status = GameStatus()
-        
+
     def run(self):
         while 1:
             next_state = self.state.run()
             self.state = next_state
 
-    
+
+class GameStatus:
+    def __init__(self):
+        self.players = [
+            HumanPlayer('Human'),
+            AiPlayer('AI'),
+        ]
+
+        self.total_scores = {p: 0 for p in self.players}
+        self.next_round_player = self.players[0]
+
+
+class Player:
+    def __init__(self, name):
+        self.name = name
+
+        
+class HumanPlayer(Player):    
+    pass
+
+
+class AiPlyaer(Player):
+    def will_roll(self, turn_state):
+        return False
+
 
 class GameState(metaclass=ABCMeta):
     def __init__(self, game):
@@ -74,7 +98,7 @@ class MainMenuState(GameState):
             self.renderer.show_main_menu()
             action = self.renderer.read_main_menu_input()
             return self.get_next_state(action)
-        
+
     def get_next_state(self, action):
         transitions = {
             self.ACTION_START_GAME: NewGameState,
@@ -82,59 +106,73 @@ class MainMenuState(GameState):
         }
         next_state_class = transitions[action]
         next_state_obj = next_state_class(self.game)
-        return next_state_obj        
+        return next_state_obj
 
 
 class NewGameState(GameState):
     def run(self):
-        status = GameStatus()
-        return NewRoundState(self.game, self.status)
+        return NewRoundState(self.game)
 
+
+class RoundState(GameState):
+    scores = None
+    next_player = None
+    lost_players = None
+    turn_skipping_players = None
     
-class GameStatus:
-    def __init__(self):
-        self.players = [
-            Player('Human'),
-            Player('AI'),
-        ]
+    def __init__(self, game, previous_state=None):
+        super(RoundState, self).__init__(game)
+        self.previous_state = previous_state
+        
+    def reset_scores(self):
+        self.scores = {p: 0 for p in self.game.staus.players}
+        self.next_player = self.game.status.next_round_player
+        self.lost_players = set()
+        
+    def advance_player(self):
+        self.next_player = next(self.players())
 
-        self.round_scores = {p: 0 for p in self.players}
-        self.total_scores = {p: 0 for p in self.players}
-        self.first_player = self.players[0]
+    def players(self, next_player=None):
+        next_player = next_player or self.next_player
 
-    def players(self):
-        return self._players(first_player=self.first_player)
-    
-    def _players(self, first_player):
         players_count = len(self.players)
-        start_idx = self.players.find(first_player)
+        start_idx = self.players.find(next_player)
         for i in range(start_idx, players_count):
             yield self.players[i]
-            
+
         if start == 0:
-            break    
-                    
+            break
+
         for i in range(0, start_idx):
             yield self.players[i]
 
-            
-class Player:
-    def __init__(self, name):
-        self.name = name
 
-    
-        
-class RoundState(GameState):
-    def __init__(self, game, status):
-        super(RoundState, self).__init__(game)
-        self.status = status
-        
-        
 class NewRoundState(RoundState):
     def run(self):
-        player = self.status.first_player
-        
+        self.reset_round_socres()
+        return RoundTurnState(self.game, self)
+
     
+class RoundTurnState(RoundState):
+    def run(self):
+        for p in self.players():
+            if self.will_player_roll(p):
+                self.roll(p)
+                self.check_player_winloose_conditions(p)
+
+    def roll(self, player):
+        score = randint(1, 6)
+        self.scores[p] += score
+
+    def will_player_roll(self, player):
+        if isinstance(player, HumanPlayer):
+            will_roll = self.renderer.will_human_player_roll()
+        else:
+            will_roll = player.will_roll(self)
+            self.renderer.will_ai_player_roll(ai_will_roll)
+        return will_roll
+    
+
 class ExitState(GameState):
     def run(self):
         self.renderer.print('Bye-bye')
@@ -164,7 +202,7 @@ class ConsoleRenderer(Renderer):
         renderer = self.state_renderers[state_class]
         return renderer
 
-    
+
 class StateConsoleRenderer(Renderer):
     def print(self, *args, **kwargs):
         print(*args, **kwargs)
