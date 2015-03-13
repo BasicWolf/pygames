@@ -66,17 +66,19 @@ class Player:
     def __init__(self, name):
         self.name = name
 
-        
-class HumanPlayer(Player):    
+
+class HumanPlayer(Player):
     pass
 
 
-class AiPlyaer(Player):
+class AiPlayer(Player):
     def will_roll(self, turn_state):
         return False
 
 
 class GameState(metaclass=ABCMeta):
+    ACTION_UNKNOWN = 0
+
     def __init__(self, game):
         self.game = game
         self.renderer = game.renderer.get_state_renderer(self)
@@ -87,17 +89,13 @@ class GameState(metaclass=ABCMeta):
 
 
 class MainMenuState(GameState):
-    ACTION_UNKNOWN = 0
     ACTION_START_GAME = 1
     ACTION_EXIT = 2
 
     def run(self):
-        action = self.ACTION_UNKNOWN;
-
-        while(action == self.ACTION_UNKNOWN):
-            self.renderer.show_main_menu()
-            action = self.renderer.read_main_menu_input()
-            return self.get_next_state(action)
+        self.renderer.show_main_menu()
+        action = self.renderer.read_main_menu_input()
+        return self.get_next_state(action)
 
     def get_next_state(self, action):
         transitions = {
@@ -111,51 +109,73 @@ class MainMenuState(GameState):
 
 class NewGameState(GameState):
     def run(self):
+        self.renderer.render_new_game()
         return NewRoundState(self.game)
 
 
 class RoundState(GameState):
+    status = None
+    
+    def __init__(self, game, status):
+        super(RoundState, self).__init__(game)
+        self.status = status
+
+class RoundStatus:
     scores = None
     next_player = None
     lost_players = None
-    turn_skipping_players = None
-    
-    def __init__(self, game, previous_state=None):
-        super(RoundState, self).__init__(game)
-        self.previous_state = previous_state
+    stopped_player = None
+
+    def __init__(self, game):
+        self.game = game
+        players = game.status.players
+        self.scores = (0, ) * len(players)
+        self.next_player = game.status.next_round_player
+        self.lost_players = []
+        self.stopped_players = []
         
-    def reset_scores(self):
-        self.scores = {p: 0 for p in self.game.staus.players}
-        self.next_player = self.game.status.next_round_player
-        self.lost_players = set()
-        
-    def advance_player(self):
-        self.next_player = next(self.players())
+    # def advance_player(self):
+    #     self.next_player = next(self.players())
 
     def players(self, next_player=None):
         next_player = next_player or self.next_player
 
-        players_count = len(self.players)
-        start_idx = self.players.find(next_player)
-        for i in range(start_idx, players_count):
-            yield self.players[i]
+        players = self.game.status.players
+        players_count = len(players)
 
-        if start == 0:
-            break
+        start_idx = players.index(next_player)
+        for i in range(start_idx, players_count):
+            yield players[i]
+
+        if start_idx == 0:
+            return
 
         for i in range(0, start_idx):
-            yield self.players[i]
-
+            yield players[i]
+    
 
 class NewRoundState(RoundState):
+    def __init__(self, game):
+        status = RoundStatus(game)
+        super(NewRoundState, self).__init__(game, status)
+        
     def run(self):
-        self.reset_round_socres()
-        return RoundTurnState(self.game, self)
+        self.reset_scores()
+        self.renderer.render()
+        return RoundTurnState(self.game, self.status)
 
-    
+    def reset_scores(self):
+        self.scores = {p: 0 for p in self.game.status.players}
+        self.next_player = self.game.status.next_round_player
+        self.lost_players = set()
+
+
 class RoundTurnState(RoundState):
+    ACTION_UNKNOWN = 0
+    ACTION_WILL_ROLL = 1
+    
     def run(self):
-        for p in self.players():
+        for p in self.status.players():
             if self.will_player_roll(p):
                 self.roll(p)
                 self.check_player_winloose_conditions(p)
@@ -166,12 +186,12 @@ class RoundTurnState(RoundState):
 
     def will_player_roll(self, player):
         if isinstance(player, HumanPlayer):
-            will_roll = self.renderer.will_human_player_roll()
+            will_roll = self.renderer.will_human_player_roll(player)
         else:
             will_roll = player.will_roll(self)
             self.renderer.will_ai_player_roll(ai_will_roll)
         return will_roll
-    
+
 
 class ExitState(GameState):
     def run(self):
@@ -191,22 +211,38 @@ class Renderer:
 class ConsoleRenderer(Renderer):
     def __init__(self, game):
         super(ConsoleRenderer, self).__init__(game)
-        self.state_renderers = {
-            MainMenuState: MainMenuStateConsoleRenderer(self),
-            RoundState: RoundConsoleRenderer(self),
-            ExitState: StateConsoleRenderer(self),
+        self.state_renderers_classes = {
+            MainMenuState: MainMenuStateConsoleRenderer,
+            NewGameState: NewGameStateConsoleRenderer,
+            NewRoundState: NewRoundStateConsoleRenderer,
+            RoundTurnState: RoundTurnConsoleRenderer,
+            ExitState: StateConsoleRenderer,
         }
+
 
     def get_state_renderer(self, state):
         state_class = type(state)
-        renderer = self.state_renderers[state_class]
-        return renderer
+        renderer_class = self.state_renderers_classes[state_class]
+        return renderer_class(self.game)
 
 
 class StateConsoleRenderer(Renderer):
     def print(self, *args, **kwargs):
         print(*args, **kwargs)
 
+    def getch(self, prompt='', keys=''):
+        while 1:
+            self._print_prompt(prompt)
+            c =  getch()
+            if keys == '':
+                return c
+            else:
+                if c in keys:
+                    return c
+
+    def _print_prompt(self, prompt):
+        if prompt != '':
+            self.print(prompt)
 
 class MainMenuStateConsoleRenderer(StateConsoleRenderer):
     def show_main_menu(self):
@@ -222,12 +258,33 @@ class MainMenuStateConsoleRenderer(StateConsoleRenderer):
             '1': MainMenuState.ACTION_START_GAME,
             '2': MainMenuState.ACTION_EXIT,
         }
-        c = getch()
+        c = self.getch()
         return char_to_action.get(c, MainMenuState.ACTION_UNKNOWN)
+
+
+class NewGameStateConsoleRenderer(StateConsoleRenderer):
+    def render_new_game(self):
+        players_count = len(self.game.status.players)
+        self.print('\nStarting a new game with %d players\n' % players_count)
 
 
 class RoundConsoleRenderer(StateConsoleRenderer):
     pass
+
+class NewRoundStateConsoleRenderer(StateConsoleRenderer):
+    def render(self):
+        print('\nNew round\n')
+
+class RoundTurnConsoleRenderer(StateConsoleRenderer):
+    def will_human_player_roll(self, player):
+        c = self.getch('%s, will you roll the dice? [y/n]' % player.name, 'yn')
+        return c == 'y'
+
+    def will_ai_player_roll(self, ai_will_roll):
+        if ai_will_roll:
+            self.print('AI decides to roll the dice')
+        else:
+            self.print('AI will not roll the dice')
 
 
 if __name__ == '__main__':
