@@ -115,35 +115,45 @@ class NewGameState(GameState):
 
 class RoundState(GameState):
     status = None
-    
+
     def __init__(self, game, status):
         super(RoundState, self).__init__(game)
         self.status = status
 
 class RoundStatus:
     scores = None
-    next_player = None
+    turn_player = None
     lost_players = None
-    stopped_player = None
+    stopped_players = None
+    players = None
 
     def __init__(self, game):
         self.game = game
-        players = game.status.players
-        self.scores = (0, ) * len(players)
-        self.next_player = game.status.next_round_player
+        self.scores = (0, ) * len(game.status.players)
+        self.turn_player = game.status.next_round_player
         self.lost_players = []
         self.stopped_players = []
-        
-    # def advance_player(self):
-    #     self.next_player = next(self.players())
 
-    def players(self, next_player=None):
-        next_player = next_player or self.next_player
+    @property
+    def turn_player(self):
+        return self._turn_player
+
+    @turn_player.setter
+    def turn_player(self, player):
+        self.players = reversed(list(self._players_gen(player)))
+        self._turn_player = self.players.pop()
+
+    def advance_player(self):
+        self._turn_player = self.players.pop()
+        return self
+
+    def _players_gen(self, player=None):
+        player = player or self.player
 
         players = self.game.status.players
         players_count = len(players)
 
-        start_idx = players.index(next_player)
+        start_idx = players.index(player)
         for i in range(start_idx, players_count):
             yield players[i]
 
@@ -152,33 +162,31 @@ class RoundStatus:
 
         for i in range(0, start_idx):
             yield players[i]
-    
+
 
 class NewRoundState(RoundState):
     def __init__(self, game):
-        status = RoundStatus(game)
+        status = RoundStatus()
         super(NewRoundState, self).__init__(game, status)
-        
+
     def run(self):
-        self.reset_scores()
         self.renderer.render()
         return RoundTurnState(self.game, self.status)
-
-    def reset_scores(self):
-        self.scores = {p: 0 for p in self.game.status.players}
-        self.next_player = self.game.status.next_round_player
-        self.lost_players = set()
 
 
 class RoundTurnState(RoundState):
     ACTION_UNKNOWN = 0
     ACTION_WILL_ROLL = 1
-    
+
     def run(self):
-        for p in self.status.players():
-            if self.will_player_roll(p):
-                self.roll(p)
-                self.check_player_winloose_conditions(p)
+        player = self.status.turn_player
+        self.roll(player)
+        self.check_player_winloose_conditions(player)
+
+        try:
+            self.status.advance_player()
+        except IndexError:
+            return 
 
     def roll(self, player):
         score = randint(1, 6)
@@ -192,7 +200,7 @@ class RoundTurnState(RoundState):
             self.renderer.will_ai_player_roll(ai_will_roll)
         return will_roll
 
-
+    
 class ExitState(GameState):
     def run(self):
         self.renderer.print('Bye-bye')
