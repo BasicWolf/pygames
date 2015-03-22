@@ -137,14 +137,14 @@ class RoundStatus:
         self.game = game
         self.players = list(game.status.players)
         self.scores = {p: 0 for p in self.players}
-        self._turn_player = game.status.next_round_player
+        self._player = game.status.next_round_player
         self.win_player = None
 
     def advance_player(self):
-        self._turn_player = self._get_next_player()
+        self._player = self._get_next_player()
 
     def _get_next_player(self):
-        player = self.turn_player
+        player = self.player
         players = self.players
 
         player_idx = players.index(player)
@@ -152,24 +152,30 @@ class RoundStatus:
         return players[next_player_idx]
 
     def update_score(self, score):    
-        self.scores[self._turn_player] += score
+        self.scores[self._player] += score
 
     def player_stops(self):
-        player = self._turn_player
+        player = self._player
         self.advance_player()
         self.players.remove(player)
 
     def player_wins(self):
-        self.win_player = self._turn_player
+        self.win_player = self._player
         
     def player_looses(self):
-        player = self._turn_player
+        player = self._player
         self.advance_player()
         self.players.remove(player)
-        
+
+    def player_won(self):
+        return self.scores[self.player] == Game.MAX_ROUND_SCORE
+
+    def check_player_lost(self):
+        return self.scores[self.player] > Game.MAX_ROUND_SCORE
+                
     @property
-    def turn_player(self):
-        return self._turn_player
+    def player(self):
+        return self._player
 
 
 class NewRoundState(RoundState):
@@ -186,32 +192,28 @@ class RoundTurnState(RoundState):
     ACTION_UNKNOWN = 0
 
     def run(self):
-        player = self.status.turn_player
+        player = self.status.player
 
-        # Only one player left in current round
-        if (len(self.status.players) == 1):
+        # Have the current player won already?
+        if self.status.player_won():
             self.status.player_wins()
             self.renderer.render_win(player)            
             return RoundEndState(self.game, self.status)
         
         player_score = self.status.scores[player]
-        player_close_to_score_boundary = (
-            Game.MAX_ROUND_SCORE - player_score  < Game.MAX_DICE_VALUE)
+        player_close_to_score_boundary = Game.MAX_ROUND_SCORE - player_score  < Game.MAX_DICE_VALUE
 
         if player_close_to_score_boundary and self.read_player_stops(player):
             self.status.player_stops()
             return self.next_turn()
 
-        roll_score = self.roll()
-        total_score = player_score + roll_score
+        self.roll()
 
-        self.renderer.render_player_rolled(player, roll_score, total_score)
-
-        if self._is_player_won(player):
+        if self.status.player_won():
             self.status.player_wins()
             self.renderer.render_win(player)
             return self.end_round()
-        elif self._is_player_lost(player):
+        elif self.status.check_player_lost():
             self.renderer.render_loose(player)
             self.status.player_looses()
         else:
@@ -224,9 +226,11 @@ class RoundTurnState(RoundState):
         return self.next_turn()
 
     def roll(self):
+        score_before_roll = self.status.scores[self.status.player]
         roll_score = randint(1, Game.MAX_DICE_VALUE)
         self.status.update_score(roll_score)
-        return roll_score
+        total_score = player_score + roll_score
+        self.renderer.render_player_rolled(player, roll_score, total_score)
 
     def read_player_stops(self, player):
         if isinstance(player, HumanPlayer):
@@ -235,12 +239,6 @@ class RoundTurnState(RoundState):
             stops = player.check_stops(self)
             self.renderer.render_ai_player_stops(stops)
         return stops
-
-    def _is_player_won(self, player):
-        return self.status.scores[player] == Game.MAX_ROUND_SCORE
-
-    def _is_player_lost(self, player):
-        return self.status.scores[player] > Game.MAX_ROUND_SCORE
 
     def next_turn(self):
         return RoundTurnState(self.game, self.status)
@@ -251,7 +249,7 @@ class RoundTurnState(RoundState):
 class RoundEndState(RoundState):
     def run(self):
         game_status = self.game.status
-        game_status.next_round_player = self.status.turn_player
+        game_status.next_round_player = self.status.player
         if self.status.win_player != None:
             game_status.player_wins(self.status.win_player)
         self.renderer.render()
