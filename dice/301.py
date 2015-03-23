@@ -64,9 +64,9 @@ class GameStatus:
         self.wins = {p: 0 for p in self.players}
         self.next_round_player = self.players[0]
 
-    def player_wins(self, player):    
+    def player_wins(self, player):
         self.wins[player] += 1
-        
+
 
 class Player:
     def __init__(self, name):
@@ -127,18 +127,30 @@ class NewGameState(GameState):
 class RoundState(GameState):
     status = None
 
-    def __init__(self, game, status):
+    def __init__(self, *args, **kwargs):
+        try:
+            s = kwargs['state']
+            game, status = s.game, s.status
+        except KeyError:
+            game, status = args
+
         super(RoundState, self).__init__(game)
         self.status = status
 
-        
+
 class RoundStatus:
     def __init__(self, game):
         self.game = game
         self.players = list(game.status.players)
+        self.stopped_players = set()
         self.scores = {p: 0 for p in self.players}
         self._player = game.status.next_round_player
-        self.win_player = None
+        self.winner = None
+        self.complete = False
+
+    @property
+    def player(self):
+        return self._player
 
     def advance_player(self):
         self._player = self._get_next_player()
@@ -151,31 +163,44 @@ class RoundStatus:
         next_player_idx = (player_idx + 1) % len(players)
         return players[next_player_idx]
 
-    def update_score(self, score):    
-        self.scores[self._player] += score
+    def update_score(self, score):
+        self.scores[self.player] += score
+        self.update()
 
-    def player_stops(self):
-        player = self._player
+    def player_stopped(self):
+        player = self.player
         self.advance_player()
         self.players.remove(player)
+        self.stopped_players.add(player)
+        self.update()
 
-    def player_wins(self):
-        self.win_player = self._player
-        
-    def player_looses(self):
-        player = self._player
+    def player_lost(self):
+        player = self.player
         self.advance_player()
         self.players.remove(player)
+        self.update()
 
-    def player_won(self):
-        return self.scores[self.player] == Game.MAX_ROUND_SCORE
+    def complete_with_winner(self):
+        self.winner = self.player
+        self.complete = True
 
-    def check_player_lost(self):
-        return self.scores[self.player] > Game.MAX_ROUND_SCORE
-                
-    @property
-    def player(self):
-        return self._player
+    def update(self):
+        if len(status.players) == 0:
+            self.complete = True
+        elif len(status.players) == 1:
+            self.complete = True
+            # all other players lost, no players stopped
+            if len(status.stopped_players) == 0:
+                status.complete_with_winner()
+            else:
+                player_score = self.scores[self.player]
+                if all(player_score > self.scores[p]
+                       for p in self.stopped_players):
+                    self.complete_with_winner()
+        elif self.scores[self.player] >= 13:
+            self.player_lost()
+        elif self.scores[self.player] == 13:
+            self.complete_with_winner()
 
 
 class NewRoundState(RoundState):
@@ -185,66 +210,57 @@ class NewRoundState(RoundState):
 
     def run(self):
         self.renderer.render()
-        return RoundTurnState(self.game, self.status)
+        return RoundTurnStart(state=self)
 
 
-class RoundTurnState(RoundState):
-    ACTION_UNKNOWN = 0
-
+class RoundTurnStart(RoundState):
     def run(self):
-        player = self.status.player
-
-        # Have the current player won already?
-        if self.status.player_won():
-            self.status.player_wins()
-            self.renderer.render_win(player)            
-            return RoundEndState(self.game, self.status)
-        
-        player_score = self.status.scores[player]
-        player_close_to_score_boundary = Game.MAX_ROUND_SCORE - player_score  < Game.MAX_DICE_VALUE
-
-        if player_close_to_score_boundary and self.read_player_stops(player):
-            self.status.player_stops()
-            return self.next_turn()
-
-        self.roll()
-
-        if self.status.player_won():
-            self.status.player_wins()
-            self.renderer.render_win(player)
-            return self.end_round()
-        elif self.status.check_player_lost():
-            self.renderer.render_loose(player)
-            self.status.player_looses()
+        if self.status.complete:
+            return RoundEndState(state=self)
         else:
-            self.status.advance_player()
+            return RoundTurnCheckPlayerStops(state=self)
 
-        # no winners (e.g. even, or all lost)
-        if (len(self.status.players) == 0):
-            return self.end_round()
         
-        return self.next_turn()
+class RoundTurnCheckPlayerStops(RoundState):
+    def run(self):
+        if self.player_stops():
+            self.status.player_stopped()
+            return RoundTurnStart(state=self)
+        else:
+            return RoundTurnRoll(state=self)
 
-    def roll(self):
-        score_before_roll = self.status.scores[self.status.player]
-        roll_score = randint(1, Game.MAX_DICE_VALUE)
-        self.status.update_score(roll_score)
-        total_score = player_score + roll_score
-        self.renderer.render_player_rolled(player, roll_score, total_score)
+    def player_stops(self):
+        status = self.status
+        player = self.player
+        pscore = status.scores[player]
+        score_not_safe = Game.MAX_ROUND_SCORE - pscore  < Game.MAX_DICE_VALUE
+        return score_not_safe and self.read_player_stops(player)
 
     def read_player_stops(self, player):
         if isinstance(player, HumanPlayer):
             stops = self.renderer.read_human_player_stops(player)
         else:
             stops = player.check_stops(self)
-            self.renderer.render_ai_player_stops(stops)
+            self.renderer.ai_player_stops(stops)
         return stops
 
-    def next_turn(self):
-        return RoundTurnState(self.game, self.status)
+    
+class RoundTurnRoll(RoundState):
+    def run(self):
+        self.roll()
+        if self.status.complete:
+            return RoundEndState(state=self)
+        else:
+            return RoundTurnStart(state=self)
 
-    def end_round(self):
-        return RoundEndState(self.game, self.status)        
+    def roll(self):
+        status = self.status
+        score_before_roll = status.scores[self.status.player]
+        roll_score = randint(1, Game.MAX_DICE_VALUE)
+        status.update_score(roll_score)
+        total_score = player_score + roll_score
+        self.renderer.player_rolled(player.name, roll_score, total_score)
+
 
 class RoundEndState(RoundState):
     def run(self):
@@ -255,7 +271,7 @@ class RoundEndState(RoundState):
         self.renderer.render()
         return NewRoundState(self.game)
 
-    
+
 class ExitState(GameState):
     def run(self):
         self.renderer.print('Bye-bye')
@@ -277,7 +293,8 @@ class ConsoleRenderer(Renderer):
             MainMenuState: MainMenuStateConsoleRenderer,
             NewGameState: NewGameStateConsoleRenderer,
             NewRoundState: NewRoundStateConsoleRenderer,
-            RoundTurnState: RoundTurnConsoleRenderer,
+            RoundTurnCheckPlayerStops: RoundTurnCheckPlayerStopsRenderer,
+            RoundTurnRoll: RoundTurnRollRenderer,
             RoundEndState: RoundEndConsoleRenderer,
             ExitState: StateConsoleRenderer,
         }
@@ -285,7 +302,7 @@ class ConsoleRenderer(Renderer):
 
     def get_state_renderer(self, state):
         state_class = type(state)
-        renderer_class = self.state_renderers_classes[state_class]
+        renderer_class = self.state_renderers_classes.get(state_class, Renderer)
         return renderer_class(self.game)
 
 
@@ -307,6 +324,7 @@ class StateConsoleRenderer(Renderer):
         if prompt != '':
             self.print(prompt)
 
+            
 class MainMenuStateConsoleRenderer(StateConsoleRenderer):
     def show_main_menu(self):
         self.print(
@@ -341,19 +359,6 @@ class NewRoundStateConsoleRenderer(StateConsoleRenderer):
 
 
 class RoundTurnConsoleRenderer(StateConsoleRenderer):
-    def read_human_player_stops(self, player):
-        c = self.getch('%s, would you like to stop rolling the dice? [y/n]' % player.name, 'yn')
-        return c == 'y'
-
-    def render_ai_player_stops(self, ai_stops):
-        if ai_stops:
-            self.print('AI decides to stop')
-        else:
-            self.print('AI rolls the dice')
-
-    def render_player_rolled(self, player, roll_score, total_rolled):
-        self.print('{} rolled: {} [{}]'.format(player.name, roll_score, total_rolled))
-
     def render_win(self, player):
         self.print('{} won!'.format(player.name))
 
@@ -361,6 +366,25 @@ class RoundTurnConsoleRenderer(StateConsoleRenderer):
         self.print('{} lost :('.format(player.name))
 
         
+class RoundTurnRollRenderer(StateConsoleRenderer):
+    def player_rolled(self, player_name, roll_score, total_rolled):
+        self.print('{} rolled: {} [{}]'.format(player_name, roll_score, total_rolled))
+
+
+class RoundTurnCheckPlayerStopsRenderer(StateConsoleRenderer):
+    def ai_player_stops(self, ai_stops):
+        if ai_stops:
+            self.print('AI decides to stop')
+        else:
+            self.print('AI rolls the dice')
+
+    def read_human_player_stops(self, player):
+        prompt = ('{}, would you like to stop rolling the dice? [y/n]'
+                  .format(player.name))
+        c = self.getch(prompt, 'yn')
+        return c == 'y'
+            
+
 class RoundEndConsoleRenderer(StateConsoleRenderer):
     def render(self):
         self.print('Total scores: ')
