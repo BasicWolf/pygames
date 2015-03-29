@@ -57,8 +57,9 @@ class Game:
 class GameStatus:
     def __init__(self):
         self.players = [
-            HumanPlayer('Human'),
-            AiPlayer('AI'),
+            AiPlayer('Alice', 1),
+            AiPlayer('Bob', 2),
+            AiPlayer('Ed', 3),
         ]
 
         self.score = {p: 0 for p in self.players}
@@ -77,17 +78,28 @@ class HumanPlayer(Player):
     pass
 
 
+
 class AiPlayer(Player):
+    def __init__(self, name, risk=1):
+        super(AiPlayer, self).__init__(name)
+        self.risk = risk
+        
     def check_stops(self, turn_state):
         status = turn_state.status
         my_score = status.scores[self]
-        safe_boundary = Game.MAX_ROUND_SCORE - Game.MAX_DICE_VALUE // 2
+        safe_boundary = Game.MAX_ROUND_SCORE - Game.MAX_DICE_VALUE // 2 + self.risk
         my_score_biggest = all(my_score >= status.scores[p]
                                for p in status.players
                                if p != self)
         return my_score_biggest and my_score >= safe_boundary
 
+    def __str__(self):
+        return 'AiPlayer [name: %s]' % self.name
 
+    def __repr__(self):
+        return str(self)
+
+    
 class GameState(metaclass=ABCMeta):
     ACTION_UNKNOWN = 0
 
@@ -176,9 +188,9 @@ class RoundStatus:
         self.update()
 
     def player_lost(self):
+        player = self.player
         self.advance_player()
-        self.players.remove(self.player)
-        self.update()
+        self.players.remove(player)
 
     def complete_with_winner(self, player):
         self.complete = True
@@ -197,10 +209,10 @@ class RoundStatus:
                 stopped_players = sorted(self.stopped_players,
                                          key=lambda p: self.scores[p],
                                          reverse=True)
-                splayer_max_score = stopped_players[0]
-                max_score = self.scores[player_max_score]
-                splayer_max_score_won = all(highest_score > self.scores[p]
-                                            for p in stopped_players[1:])
+                max_score_player = stopped_players[0]
+                max_score = self.scores[max_score_player]
+                max_score_won = all(max_score > self.scores[p]
+                                    for p in stopped_players[1:])
                 if max_score_won:
                     # e.g. [10, 9, 9, ...]
                     self.complete_with_winner()
@@ -222,7 +234,8 @@ class RoundStatus:
             self.player_lost()
         elif self.scores[self.player] == Game.MAX_ROUND_SCORE:
             self.complete_with_winner(self.player)
-
+        else:
+            self.advance_player()
 
 class NewRoundState(RoundState):
     def __init__(self, game):
@@ -266,7 +279,7 @@ class RoundTurnCheckPlayerStops(RoundState):
             stops = self.renderer.read_human_player_stops(player)
         else:
             stops = player.check_stops(self)
-            self.renderer.ai_player_stops(stops)
+            self.renderer.player_stops(player.name, stops)
         return stops
 
 
@@ -276,7 +289,6 @@ class RoundTurnRoll(RoundState):
         if self.status.complete:
             return RoundEndState(state=self)
         else:
-            self.status.advance_player()
             return RoundTurnStart(state=self)
 
     def roll(self):
@@ -407,11 +419,11 @@ class RoundTurnRollRenderer(StateConsoleRenderer):
 
 
 class RoundTurnCheckPlayerStopsRenderer(StateConsoleRenderer):
-    def ai_player_stops(self, ai_stops):
-        if ai_stops:
-            self.print('AI decides to stop')
+    def player_stops(self, player_name, stops):
+        if stops:
+            self.print('%s decides to stop' % player_name)
         else:
-            self.print('AI rolls the dice')
+            self.print('%s rolls the dice' % player_name)
 
     def read_human_player_stops(self, player):
         prompt = ('{}, would you like to stop rolling the dice? [y/n]'
