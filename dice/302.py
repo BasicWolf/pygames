@@ -2,57 +2,66 @@
 # The game is about collecting the number closest to 13.
 # Any number of players can play the game.
 
-# Rules:
-# ======
-#
-# Before round
-# ------------
-#
-# Players are rotated clockwise, so that the player who started
-# the previous round, will be the last one to roll the dice in the
-# following round.
-#
-# Round:
-# ------
-#
-# 1.1 Player 1 rolls the dice and gets N points.
-# 1.2 Player 2 rolls the dice and gets M points.
-# 1.3 The process continues for all other players
-# 2.1 The points collected at each roll are summed.
-# 2.2 If a player's summary points exceed 13, he or she loses the round.
-# 2.3 If a player's score is 13, he or she wins the round.
-# 2.4 If a player's score is lower than 13, he or she can continue to the
-#     next round, or stop rolling and skip all the next turns.
-# 2.5 The round ends when a single player left or when all remaining players
-#     decide to skip the round. In this case a player with highest summary
-#     points wins the game. The game is considered a draw and 'no-win' for
-#     players if all summary points are equal.
-
 from abc import ABCMeta, abstractmethod
 from random import randint
 
 from getch import getch
 
+import asyncio
+import sys
+
+# event = asyncio.Event()
+
+# @asyncio.coroutine
+# def tick():
+#     while 1:
+#         print('Tick')
+#         yield from asyncio.sleep(1)
+
+#         if event.is_set():
+#             data = event.data  # NOTE: data read from the event object
+#             print('Data received: {}'.format(data))
+#             event.clear()
+
+
+def handle_stdin():
+    data = sys.stdin.readline()
+    event.data = data  # NOTE: data assigned to the event object
+    event.set()
 
 def main():
-    game = Game()
-    game.run()
+    loop = asyncio.get_event_loop()
+    game = Game(loop)
+    loop.run_until_complete(game.run())
 
 
 class Game:
     MAX_DICE_VALUE = 6
     MAX_ROUND_SCORE = 13
 
-    def __init__(self):
+    def __init__(self, loop):
         self.renderer = ConsoleRenderer(self)
         self.state = MainMenuState(self)
         self.status = GameStatus()
+        self._stdin_queue = asyncio.Queue()
+        loop.add_reader(sys.stdin, self._on_stdin)
+    
+    def _on_stdin(self):
+        data = sys.stdin.readline()
+        asyncio.async(self._stdin_queue.put(data))
 
+    @asyncio.coroutine
+    def input(self):
+        data = None
+        while not data:
+            data = yield from self._stdin_queue.get()
+        return data
+    
+    @asyncio.coroutine
     def run(self):
         while 1:
             next_state = self.state.run()
             self.state = next_state
-
 
 class GameStatus:
     def __init__(self):
@@ -85,7 +94,7 @@ class AiPlayer(Player):
     def __init__(self, name, risk=1):
         super(AiPlayer, self).__init__(name)
         self.risk = risk
-        
+
     def check_stops(self, turn_state):
         status = turn_state.status
         my_score = status.scores[self]
@@ -101,7 +110,7 @@ class AiPlayer(Player):
     def __repr__(self):
         return str(self)
 
-    
+
 class GameState(metaclass=ABCMeta):
     ACTION_UNKNOWN = 0
 
@@ -239,7 +248,7 @@ class RoundStatus:
         else:
             self.advance_player()
 
-            
+
 class NewRoundState(RoundState):
     def __init__(self, game):
         status = RoundStatus(game)
@@ -367,8 +376,10 @@ class StateConsoleRenderer(Renderer):
         if prompt != '':
             self.print(prompt)
 
-    def input(self, *args, **kwargs):
-        return input(*args, **kwargs)
+    def input(self, prompt):
+        if prompt:
+            self.print(prompt)
+        return self.game.input()
 
 
 class MainMenuStateConsoleRenderer(StateConsoleRenderer):
