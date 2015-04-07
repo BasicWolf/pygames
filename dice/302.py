@@ -10,19 +10,6 @@ from getch import getch
 import asyncio
 import sys
 
-# event = asyncio.Event()
-
-# @asyncio.coroutine
-# def tick():
-#     while 1:
-#         print('Tick')
-#         yield from asyncio.sleep(1)
-
-#         if event.is_set():
-#             data = event.data  # NOTE: data read from the event object
-#             print('Data received: {}'.format(data))
-#             event.clear()
-
 
 def handle_stdin():
     data = sys.stdin.readline()
@@ -52,10 +39,8 @@ class Game:
 
     @asyncio.coroutine
     def input(self):
-        data = None
-        while not data:
-            data = yield from self._stdin_queue.get()
-        return data
+        while 1:
+            yield from self._stdin_queue.get()
     
     @asyncio.coroutine
     def run(self):
